@@ -34,58 +34,66 @@ The rapid evolution of sophisticated malware—including **fileless in-memory ex
 The following diagram details the end-to-end telemetry, graph processing, neural inference, and autonomous mitigation pipeline:
 
 ```mermaid
-graph TD
-    subgraph KernelSpace ["Tier 1: Linux Kernel Space (eBPF Telemetry & LSM Enforcement)"]
-        style KernelSpace fill:#0d1527,stroke:#00f0ff,stroke-width:2px,color:#ffffff
-        TP1["sys_enter_execve / sys_enter_fork<br/><b>Process Lifecycle & Lineage</b>"]
-        TP2["sys_enter_openat / sys_enter_unlinkat<br/><b>File Operations & Mass Encryption</b>"]
-        TP3["sys_enter_connect / sys_enter_bind<br/><b>Network C2 & Reverse Shells</b>"]
-        TP4["sys_enter_mprotect / sys_enter_mmap<br/><b>Memory Permissions & W^X Violations</b>"]
-        TP5["sys_enter_memfd_create<br/><b>Fileless In-Memory Execution</b>"]
-        TP6["sys_enter_setuid / sys_enter_capset<br/><b>Privilege Escalation Transitions</b>"]
-        LSM["<b>eBPF LSM Hooks</b><br/>lsm_bprm_check_security • lsm_file_open"]
-        RB["<b>BPF RingBuffer Map (256 KB)</b><br/>Zero-Copy Multi-Core Transfer • CPU &lt; 1.15%"]
-        
+flowchart TD
+    subgraph KernelSpace ["Linux Kernel Space (eBPF Telemetry & In-Kernel LSM)"]
+        style KernelSpace fill:#080e1c,stroke:#00f0ff,stroke-width:2px,color:#ffffff
+        TP1["<b>Lineage Probes</b><br/><code>sys_enter_execve</code> • <code>fork</code> • <code>setuid</code>"]
+        TP2["<b>Memory & Invariant Probes</b><br/><code>sys_enter_memfd_create</code> • <code>mprotect(W^X)</code>"]
+        TP3["<b>I/O & Socket Probes</b><br/><code>sys_enter_openat</code> • <code>unlinkat</code> • <code>connect</code>"]
+        RB["<b>BPF RingBuffer Map (256 KB)</b><br/>Zero-Copy Multi-Core Queue • 48,200 ev/s • CPU Overhead &lt; 1.15%"]
+
         TP1 --> RB
         TP2 --> RB
         TP3 --> RB
-        TP4 --> RB
-        TP5 --> RB
-        TP6 --> RB
     end
 
-    subgraph IngestionSources ["Tier 2: Multi-Source Telemetry Ingestion Gateway"]
-        style IngestionSources fill:#09162a,stroke:#3b82f6,stroke-width:2px,color:#ffffff
-        RB -->|"RingBuffer Stream (48,200 ev/s)"| DISPATCH["<b>Unified Telemetry Dispatcher</b>"]
-        HOST["<b>Host OS Live Sniffer</b><br/>Real Local Processes & Sockets (psutil)"] --> DISPATCH
-        DARPA["<b>DARPA TC Ingestion Engine</b><br/>CDM THEIA/CADETS Replayer"] --> DISPATCH
+    subgraph Gateway ["Multi-Source Ingestion & Dispatcher"]
+        style Gateway fill:#071426,stroke:#3b82f6,stroke-width:2px,color:#ffffff
+        SNIFF["<b>Live Host OS Sniffer</b><br/>psutil Windows/Linux"]
+        DARPA["<b>DARPA TC CDM Replay</b><br/>THEIA / CADETS Datasets"]
+        DISPATCH["<b>Unified Telemetry Dispatcher</b><br/>Deduplication • Microsecond Canonical Ordering"]
+
+        RB -->|"Zero-Copy Stream"| DISPATCH
+        SNIFF --> DISPATCH
+        DARPA --> DISPATCH
     end
 
-    subgraph GraphEngine ["Tier 3: Temporal Behavioral Graph & Provenance Slicing"]
-        style GraphEngine fill:#0b1d30,stroke:#20c997,stroke-width:2px,color:#ffffff
-        DISPATCH --> TBG["<b>Dynamic Temporal Multi-Graph</b><br/>G = (V, E, T)"]
-        TBG -->|"Entities (V)"| Nodes["<b>Processes</b> (PID, PPID, comm, UID)<br/><b>Files</b> (Path, IsSensitive, RansomExt)<br/><b>Sockets</b> (IP, Port, IsExternal)<br/><b>Memory</b> (Address, RWX, Memfd)"]
-        TBG -->|"Causal Edges (E)"| Edges["<b>Timestamped Syscall Transitions</b><br/>(Delta t, LineageDepth, Flags)"]
-        TBG --> SLICE["<b>Causal Provenance Slicing Engine</b><br/>Backward Root-Cause & Forward Blast Radius"]
+    subgraph GraphEngine ["Temporal Behavioral Graph & Provenance Engine"]
+        style GraphEngine fill:#061a28,stroke:#20c997,stroke-width:2px,color:#ffffff
+        TBG["<b>Dynamic Temporal Multi-Graph G = (V, E, T)</b><br/>Processes • Files • Sockets • Memory Allocations"]
+        EDGES["<b>Causal Edges (E)</b><br/>Timestamped Syscall Transitions & Lineage"]
+        SLICE["<b>Causal Provenance Slicing</b><br/>Backward Root-Cause & Forward Blast-Radius"]
+
+        DISPATCH --> TBG
+        TBG --> EDGES
+        TBG --> SLICE
     end
 
-    subgraph NeuralModel ["Tier 4: Hybrid GNN + Temporal Transformer & GNNExplainer"]
-        style NeuralModel fill:#1a0f2e,stroke:#a855f7,stroke-width:2px,color:#ffffff
-        TBG --> GAT["<b>Relational Graph Attention (GAT)</b><br/>Heterogeneous Topological Message Passing"]
-        Edges --> GAT
-        GAT --> Transformer["<b>Temporal Transformer Encoder</b><br/>Multi-Head Self-Attention over Event Order"]
-        Transformer --> Pooling["<b>Max-Mean Anomaly Pooling</b><br/>Anomaly Retention: 0.7 Max + 0.3 Mean"]
-        Pooling --> RiskHead["<b>Adaptive Risk Score Head</b><br/>Risk Score S_model in [0, 1]"]
-        GAT --> EXPLAIN["<b>GNNExplainer Engine</b><br/>Gradient-based Edge Saliency Heatmap"]
+    subgraph NeuralModel ["Hybrid GNN-Transformer & Explainability"]
+        style NeuralModel fill:#140c24,stroke:#a855f7,stroke-width:2px,color:#ffffff
+        GAT["<b>Relational Graph Attention (GAT)</b><br/>Heterogeneous Spatial Neighborhood Aggregation"]
+        TRANS["<b>Temporal Transformer</b><br/>Multi-Head Self-Attention over Event Order"]
+        POOL["<b>Max-Mean Threat Pooling</b><br/>0.70 Peak Threat + 0.30 Context"]
+        EXPLAIN["<b>GNNExplainer Engine</b><br/>Edge Saliency Attribution Heatmap (0 - 100%)"]
+
+        SLICE --> GAT
+        EDGES --> GAT
+        GAT --> TRANS
+        TRANS --> POOL
+        POOL --> EXPLAIN
     end
 
-    subgraph DefenseHUD ["Tier 5: Adaptive Risk Scoring, Mitigation & SOC Command Center"]
-        style DefenseHUD fill:#220e18,stroke:#ff0055,stroke-width:2px,color:#ffffff
-        RiskHead --> Composite["<b>Composite Risk Synthesis</b><br/>S_composite = f(S_model, S_semantic, S_lineage)"]
-        Composite --> MITRE["<b>MITRE ATT&CK Matrix Mapping</b><br/>T1620 • T1055.012 • T1486 • T1059 • T1071 • T1068"]
-        MITRE --> UI["<b>Live Command Center & Visualizer</b><br/>Interactive Canvas • Sandbox Terminal • LaTeX Export"]
-        UI -->|"Enforce Action"| MITIGATE["<b>Autonomous Mitigation Engine</b><br/>In-Kernel bpf_send_signal(SIGKILL) • Latency: 0.42 ms"]
-        MITIGATE -.->|"Abort Syscall / Kill PID"| LSM
+    subgraph DefenseHUD ["Adaptive Risk Scorer, Mitigation & SOC Command"]
+        style DefenseHUD fill:#1c0914,stroke:#ff0055,stroke-width:2px,color:#ffffff
+        SCORE["<b>Adaptive Risk Scorer:</b> S_composite = 0.50 S_model + 0.35 S_semantic + 0.15 S_lineage"]
+        MITRE["<b>Automated MITRE ATT&CK Mapping:</b> T1620 • T1055.012 • T1486 • T1059 • T1071 • T1068"]
+        ACTION["<b>Autonomous Mitigation Engine:</b> In-Kernel SIGKILL • Firewall IP Drop • Volume Freeze (&lt; 0.45 ms)"]
+        UI["<b>Interactive SOC Command Center:</b> Force Graph HUD • Live Sandbox Shell • LaTeX Export"]
+
+        EXPLAIN --> SCORE
+        SCORE --> MITRE
+        MITRE --> ACTION
+        ACTION --> UI
     end
 ```
 
@@ -237,34 +245,54 @@ Evaluated against the **DARPA Transparent Computing (TC) THEIA & CADETS** benchm
 ## 🧮 Mathematical & Theoretical Foundations
 
 ### 1. Heterogeneous Graph Attention Layer (GAT)
-For an entity node $i \in V$ with feature vector $\mathbf{h}_i \in \mathbb{R}^{d}$ and incoming edge $e_{ij} \in \mathbb{R}^{d_e}$ from neighbor $j \in \mathcal{N}_i$, the attention coefficient $\alpha_{ij}$ is computed as:
 
-$$\alpha_{ij} = \frac{\exp\left(\text{LeakyReLU}\left(\mathbf{a}^T [\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_j \,\|\, \mathbf{W}_e \mathbf{e}_{ij}]\right)\right)}{\sum_{k \in \mathcal{N}_i} \exp\left(\text{LeakyReLU}\left(\mathbf{a}^T [\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_k \,\|\, \mathbf{W}_e \mathbf{e}_{ik}]\right)\right)}$$
+KernelGuard structures system execution as a directed heterogeneous graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$. The spatial attention coefficient $\alpha_{ij}$ quantifying the causal influence between entity node $i$ and neighbor $j \in \mathcal{N}_i$ is formulated as:
 
-The updated node representation is aggregated:
+$$
+\alpha_{ij} = \frac{\exp\left(\text{LeakyReLU}\left(\mathbf{a}^\top \left[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_j \,\|\, \mathbf{W}_e \mathbf{e}_{ij}\right]\right)\right)}{\sum_{k \in \mathcal{N}_i} \exp\left(\text{LeakyReLU}\left(\mathbf{a}^\top \left[\mathbf{W}\mathbf{h}_i \,\|\, \mathbf{W}\mathbf{h}_k \,\|\, \mathbf{W}_e \mathbf{e}_{ik}\right]\right)\right)}
+$$
 
-$$\mathbf{h}_i^{(l+1)} = \sigma\left(\sum_{j \in \mathcal{N}_i} \alpha_{ij} \mathbf{W}\mathbf{h}_j^{(l)} + \mathbf{W}\mathbf{h}_i^{(l)}\right)$$
+**Notation & Parameter Definitions:**
+* **Node Representations**: $\mathbf{h}_i \in \mathbb{R}^d$ denotes the feature state of target entity node $i$.
+* **Edge Context**: $\mathbf{e}_{ij} \in \mathbb{R}^{d_e}$ captures the syscall operation type, arguments, and timestamp delta $\Delta t$.
+* **Neighborhood**: $\mathcal{N}_i$ denotes the set of immediate causal incoming neighbors of node $i$.
+* **Projection Matrices**: $\mathbf{W} \in \mathbb{R}^{d' \times d}$ and $\mathbf{W}_e \in \mathbb{R}^{d' \times d_e}$ project node and edge attributes into the joint attention space.
+
+The updated node representation $\mathbf{h}_i^{(l+1)}$ at layer $l+1$ aggregates spatial neighborhood context:
+
+$$
+\mathbf{h}_i^{(l+1)} = \sigma\left(\sum_{j \in \mathcal{N}_i} \alpha_{ij} \mathbf{W}\mathbf{h}_j^{(l)} + \mathbf{W}_0 \mathbf{h}_i^{(l)}\right)
+$$
 
 ### 2. Temporal Transformer Multi-Head Self-Attention
-Causal syscall sequences are passed through a Temporal Transformer encoder with position/time-encoded self-attention:
 
-$$\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^T}{\sqrt{d_k}}\right)\mathbf{V}$$
+Causal syscall sequences are passed through a Temporal Transformer encoder with position- and time-encoded self-attention:
+
+$$
+\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}
+$$
 
 ### 3. Max-Mean Graph Pooling for Threat Retention
-Because malicious activity manifests as localized, peak anomalies (e.g., a single `memfd_create` or `mprotect(PROT_EXEC)` in thousands of benign operations), pure mean pooling dilutes threat signals. KernelGuard employs a hybrid pooling operator:
 
-$$\mathbf{h}_{\text{graph}} = 0.70 \cdot \max_{i \in V}(\mathbf{h}_i) + 0.30 \cdot \frac{1}{|V|}\sum_{i \in V} \mathbf{h}_i$$
+Because malicious activity manifests as localized, peak anomalies (e.g., an isolated `memfd_create` or `mprotect(PROT_EXEC)` call amidst thousands of benign operations), standard mean pooling dilutes threat signals. KernelGuard employs a hybrid pooling operator:
+
+$$
+\mathbf{h}_{\text{graph}} = 0.70 \cdot \max_{i \in \mathcal{V}}(\mathbf{h}_i) + 0.30 \cdot \frac{1}{|\mathcal{V}|}\sum_{i \in \mathcal{V}} \mathbf{h}_i
+$$
 
 ### 4. Adaptive Multi-Factor Composite Risk Score
+
 The final risk assessment synthesizes model confidence, syscall semantic violations, and lineage anomaly:
 
-$$S_{\text{composite}} = \alpha S_{\text{model}} + \beta S_{\text{semantic}} + \gamma S_{\text{lineage}}$$
+$$
+S_{\text{composite}} = \alpha S_{\text{model}} + \beta S_{\text{semantic}} + \gamma S_{\text{lineage}}
+$$
 
 Where:
-* $S_{\text{model}} \in [0, 1]$ represents the deep GNN-Transformer output.
+* $S_{\text{model}} \in [0, 1]$ represents the deep GNN-Transformer threat output.
 * $S_{\text{semantic}} \in [0, 1]$ evaluates invariant violations ($+0.45$ for `memfd`, $+0.35$ for `mprotect(RWX)`, $+0.50$ for mass unlinks, $+0.40$ for `/etc/shadow` access, $+0.50$ for `setuid(0)`).
 * $S_{\text{lineage}} \in [0, 1]$ penalizes rare parent-child transitions (e.g., `nginx` spawning `python3` spawning `sh`).
-* Dynamically weighted: if $S_{\text{semantic}} > 0.6$, weights adapt to $\alpha=0.50, \beta=0.35, \gamma=0.15$ to prioritize invariant safety.
+* **Dynamic Weighting**: If $S_{\text{semantic}} > 0.60$, weights dynamically adapt to $\alpha=0.50, \beta=0.35, \gamma=0.15$ to prioritize deterministic invariant safety.
 
 ---
 

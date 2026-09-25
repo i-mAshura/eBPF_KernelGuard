@@ -70,8 +70,11 @@
     </div>
 
     <div style="display: flex; gap: 8px;">
+      <button class="btn-tool active-toggle" onclick="openTerminalDemoGuideModal()" style="border-color: var(--cyan-accent); color: var(--cyan-accent);">
+        <span>💻 Live Terminal Demo</span>
+      </button>
       <button class="btn-tool" id="btnHostSnifferToggle" onclick="toggleHostSniffer()">
-        <span>🖥️ Host OS Sniffer: OFF</span>
+        <span>🖥️ Host OS Sniffer: ON</span>
       </button>
       <button class="btn-tool" id="btnSaliencyToggle" onclick="toggleSaliencyHeatmap()">
         <span>🧠 GNN Saliency: OFF</span>
@@ -365,6 +368,90 @@ Try: 'whoami', 'curl -s https://example.com', or simulated shellcode triggers.
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
           <button class="btn-tool" onclick="copyLatexSnippet()">📋 Copy to Clipboard</button>
           <button class="btn-tool active-toggle" onclick="downloadLatexFile()">💾 Download .tex File</button>
+        </div>
+      </div>
+    </div>
+  <!-- Feature 8: Interactive Terminal Demo Guide Modal -->
+  <div class="modal-overlay" id="terminalDemoModal">
+    <div class="modal-card" style="width: 780px;">
+      <div class="modal-header">
+        <h3>💻 Live Interactive Terminal Attack Demonstration</h3>
+        <button class="btn-close" onclick="closeTerminalDemoGuideModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
+          Open <strong>any terminal</strong> (PowerShell, Command Prompt, or bash) on your machine. Run any of the commands below to launch a realistic red-team attack. KernelGuard's live host sniffer and gateway intercept the process, track the real host PID, compute the GNN risk score, and allow you to enforce in-kernel mitigation!
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Scenario 1 -->
+          <div class="terminal-command-card">
+            <div class="cmd-title">
+              <span>⚡ Attack 1: Fileless In-Memory ELF Execution</span>
+              <span style="font-size: 10px; color: #ff0055; font-family: var(--font-mono);">T1620 • T1055.012</span>
+            </div>
+            <div style="font-size: 11px; color: #8899aa;">Allocates anonymous memfd, violates W^X via mprotect(PROT_EXEC), and beacons outbound.</div>
+            <div class="cmd-box">
+              <code>python attack.py --fileless</code>
+              <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('python attack.py --fileless'); alert('Copied!');">Copy</button>
+            </div>
+          </div>
+
+          <!-- Scenario 2 -->
+          <div class="terminal-command-card">
+            <div class="cmd-title">
+              <span>☣️ Attack 2: High-Speed Ransomware Mass Encryption</span>
+              <span style="font-size: 10px; color: #ff0055; font-family: var(--font-mono);">T1486 • Impact</span>
+            </div>
+            <div style="font-size: 11px; color: #8899aa;">Rapid multi-file openat -> write -> mass unlinkat(*.locked) -> drops README ransom note.</div>
+            <div class="cmd-box">
+              <code>python attack.py --ransomware</code>
+              <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('python attack.py --ransomware'); alert('Copied!');">Copy</button>
+            </div>
+          </div>
+
+          <!-- Scenario 3 -->
+          <div class="terminal-command-card">
+            <div class="cmd-title">
+              <span>🐚 Attack 3: Stealth C2 Reverse Shell & Credential Access</span>
+              <span style="font-size: 10px; color: #ff0055; font-family: var(--font-mono);">T1059.004 • T1003.008</span>
+            </div>
+            <div style="font-size: 11px; color: #8899aa;">Connects to C2 listener at 185.220.101.5:4444, spawns interactive /bin/sh, and probes /etc/shadow.</div>
+            <div class="cmd-box">
+              <code>python attack.py --c2</code>
+              <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('python attack.py --c2'); alert('Copied!');">Copy</button>
+            </div>
+          </div>
+
+          <!-- Scenario 4 -->
+          <div class="terminal-command-card">
+            <div class="cmd-title">
+              <span>🛡️ Attack 4: Kernel Privilege Escalation Exploit</span>
+              <span style="font-size: 10px; color: #ff0055; font-family: var(--font-mono);">T1068 • CVE Memory Corruption</span>
+            </div>
+            <div style="font-size: 11px; color: #8899aa;">Modifies code segments, performs unauthorized sys_enter_setuid(0) root transition.</div>
+            <div class="cmd-box">
+              <code>python attack.py --privesc</code>
+              <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('python attack.py --privesc'); alert('Copied!');">Copy</button>
+            </div>
+          </div>
+
+          <!-- Interactive Menu -->
+          <div class="terminal-command-card" style="border-color: rgba(0, 255, 136, 0.3);">
+            <div class="cmd-title">
+              <span style="color: var(--emerald-safe);">🎮 Interactive Red-Team Terminal Menu</span>
+              <span style="font-size: 10px; color: var(--emerald-safe); font-family: var(--font-mono);">Live Menu</span>
+            </div>
+            <div style="font-size: 11px; color: #8899aa;">Launches the full interactive CLI menu with animated red-team execution & kill listener.</div>
+            <div class="cmd-box">
+              <code>python attack.py</code>
+              <button class="btn-copy-cmd" onclick="navigator.clipboard.writeText('python attack.py'); alert('Copied!');">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+          <button class="btn-tool active-toggle" onclick="closeTerminalDemoGuideModal()">Got it, Start Live Demo</button>
         </div>
       </div>
     </div>

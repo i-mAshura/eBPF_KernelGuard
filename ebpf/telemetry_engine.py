@@ -72,9 +72,10 @@ class TelemetryEngine:
             ret_val=0
         )
 
-    def generate_attack_scenario(self, scenario_name: str) -> List[KernelEvent]:
+    def generate_attack_scenario(self, scenario_name: str, target_pid: Optional[int] = None, comm: Optional[str] = None) -> List[KernelEvent]:
         """
         Synthesizes causal attack sequences as intercepted by eBPF tracepoints.
+        Supports custom host PID and process name binding for live interactive demos.
         """
         now = time.time()
         events: List[KernelEvent] = []
@@ -82,9 +83,10 @@ class TelemetryEngine:
         if scenario_name == "fileless":
             # Scenario 1: Fileless In-Memory ELF Execution
             # curl | bash -> memfd_create -> mprotect(RWX) -> connect C2
-            pid_curl = 6120
-            pid_bash = 6121
-            pid_malware = 6122
+            pid_malware = target_pid if target_pid else 6122
+            pid_bash = max(pid_malware - 1, 1001)
+            pid_curl = max(pid_malware - 2, 1000)
+            comm_mal = (comm[:15] if comm else "kworker_daemon")
 
             # 1. Spawn curl
             events.append(KernelEvent(
@@ -114,7 +116,7 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.45) * 1e9),
                 pid=pid_malware, ppid=pid_bash, uid=1000,
-                comm="kworker_daemon", pcomm="bash",
+                comm=comm_mal, pcomm="bash",
                 event_type="EVENT_MEM_PROTECT", raw_syscall="sys_enter_mprotect",
                 mem_prot="0x7 (PROT_READ|PROT_WRITE|PROT_EXEC)",
                 mem_addr="0x7f9a4c000000"
@@ -123,18 +125,19 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.60) * 1e9),
                 pid=pid_malware, ppid=pid_bash, uid=1000,
-                comm="kworker_daemon", pcomm="bash",
+                comm=comm_mal, pcomm="bash",
                 event_type="EVENT_NET_CONNECT", raw_syscall="sys_enter_connect",
                 net_daddr="194.26.29.112", net_dport=4444
             ))
 
         elif scenario_name == "ransomware":
             # Scenario 2: Ransomware Mass Encryption & Shadow Deletion
-            pid_ransom = 7800
+            pid_ransom = target_pid if target_pid else 7800
+            comm_ran = (comm[:15] if comm else "dark_crypt.elf")
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.05) * 1e9),
                 pid=pid_ransom, ppid=1, uid=1000,
-                comm="dark_crypt.elf", pcomm="bash",
+                comm=comm_ran, pcomm="bash",
                 event_type="EVENT_PROCESS_EXEC", raw_syscall="sys_enter_execve",
                 target_path="/tmp/.cache/dark_crypt.elf"
             ))
@@ -151,7 +154,7 @@ class TelemetryEngine:
                 events.append(KernelEvent(
                     timestamp_ns=int((now + 0.10 + i * 0.10) * 1e9),
                     pid=pid_ransom, ppid=1, uid=1000,
-                    comm="dark_crypt.elf", pcomm="bash",
+                    comm=comm_ran, pcomm="bash",
                     event_type="EVENT_FILE_OPEN", raw_syscall="sys_enter_openat",
                     target_path=fpath
                 ))
@@ -159,7 +162,7 @@ class TelemetryEngine:
                 events.append(KernelEvent(
                     timestamp_ns=int((now + 0.15 + i * 0.10) * 1e9),
                     pid=pid_ransom, ppid=1, uid=1000,
-                    comm="dark_crypt.elf", pcomm="bash",
+                    comm=comm_ran, pcomm="bash",
                     event_type="EVENT_FILE_UNLINK", raw_syscall="sys_enter_unlinkat",
                     target_path=f"{fpath}.locked"
                 ))
@@ -167,7 +170,7 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.80) * 1e9),
                 pid=pid_ransom, ppid=1, uid=1000,
-                comm="dark_crypt.elf", pcomm="bash",
+                comm=comm_ran, pcomm="bash",
                 event_type="EVENT_FILE_WRITE", raw_syscall="sys_enter_write",
                 target_path="/home/user/README_RECOVER_KEYS.txt"
             ))
@@ -175,19 +178,20 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.95) * 1e9),
                 pid=pid_ransom, ppid=1, uid=1000,
-                comm="dark_crypt.elf", pcomm="bash",
+                comm=comm_ran, pcomm="bash",
                 event_type="EVENT_NET_CONNECT", raw_syscall="sys_enter_connect",
                 net_daddr="45.142.214.88", net_dport=8080
             ))
 
         elif scenario_name == "reverse_shell":
             # Scenario 3: C2 Reverse Shell & Lateral Probe
-            pid_target = 8840
-            pid_sh = 8841
+            pid_target = target_pid if target_pid else 8840
+            pid_sh = pid_target + 1
+            comm_target = (comm[:15] if comm else "python3")
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.05) * 1e9),
                 pid=pid_target, ppid=1102, uid=33, # compromised web server
-                comm="python3", pcomm="nginx",
+                comm=comm_target, pcomm="nginx",
                 event_type="EVENT_PROCESS_EXEC", raw_syscall="sys_enter_execve",
                 target_path="/usr/bin/python3"
             ))
@@ -195,7 +199,7 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.20) * 1e9),
                 pid=pid_target, ppid=1102, uid=33,
-                comm="python3", pcomm="nginx",
+                comm=comm_target, pcomm="nginx",
                 event_type="EVENT_NET_CONNECT", raw_syscall="sys_enter_connect",
                 net_daddr="185.220.101.5", net_dport=1337
             ))
@@ -203,7 +207,7 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.35) * 1e9),
                 pid=pid_sh, ppid=pid_target, uid=33,
-                comm="sh", pcomm="python3",
+                comm="sh", pcomm=comm_target,
                 event_type="EVENT_PROCESS_EXEC", raw_syscall="sys_enter_execve",
                 target_path="/bin/sh"
             ))
@@ -211,32 +215,33 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.50) * 1e9),
                 pid=pid_sh, ppid=pid_target, uid=33,
-                comm="sh", pcomm="python3",
+                comm="sh", pcomm=comm_target,
                 event_type="EVENT_FILE_OPEN", raw_syscall="sys_enter_openat",
                 target_path="/etc/passwd"
             ))
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.65) * 1e9),
                 pid=pid_sh, ppid=pid_target, uid=33,
-                comm="sh", pcomm="python3",
+                comm="sh", pcomm=comm_target,
                 event_type="EVENT_FILE_OPEN", raw_syscall="sys_enter_openat",
                 target_path="/etc/shadow"
             ))
 
         elif scenario_name == "privesc":
             # Scenario 4: Privilege Escalation via Kernel Exploit / setuid(0)
-            pid_exploit = 9310
+            pid_exploit = target_pid if target_pid else 9310
+            comm_exp = (comm[:15] if comm else "cve_exploit")
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.05) * 1e9),
                 pid=pid_exploit, ppid=2810, uid=1000,
-                comm="cve_exploit", pcomm="bash",
+                comm=comm_exp, pcomm="bash",
                 event_type="EVENT_PROCESS_EXEC", raw_syscall="sys_enter_execve",
                 target_path="/home/user/dirtycow_exp"
             ))
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.20) * 1e9),
                 pid=pid_exploit, ppid=2810, uid=1000,
-                comm="cve_exploit", pcomm="bash",
+                comm=comm_exp, pcomm="bash",
                 event_type="EVENT_MEM_PROTECT", raw_syscall="sys_enter_mprotect",
                 mem_prot="0x7 (PROT_READ|PROT_WRITE|PROT_EXEC)",
                 mem_addr="0x400000"
@@ -245,7 +250,7 @@ class TelemetryEngine:
             events.append(KernelEvent(
                 timestamp_ns=int((now + 0.40) * 1e9),
                 pid=pid_exploit, ppid=2810, uid=0, # uid transition!
-                comm="cve_exploit", pcomm="bash",
+                comm=comm_exp, pcomm="bash",
                 event_type="EVENT_PRIV_SETUID", raw_syscall="sys_enter_setuid",
                 target_path="uid=0(root)"
             ))

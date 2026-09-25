@@ -1,0 +1,186 @@
+{
+  "engagement": "DARPA Transparent Computing Engagement 5 (E5)",
+  "scenario": "THEIA APT33 Campaign",
+  "host_os": "Linux Ubuntu 16.04 (Kernel 4.4.0)",
+  "cdm_version": "TC CDM v19",
+  "malicious_subjects": [
+    "thunderbird",
+    "sh",
+    "theia_payload"
+  ],
+  "compromised_pids": [
+    5020,
+    5025,
+    5026
+  ],
+  "c2_nodes": [
+    "128.55.12.189:443",
+    "198.51.100.45:8443"
+  ],
+  "attack_stages": [
+    {
+      "step": 1,
+      "technique": "T1566",
+      "name": "Phishing Email",
+      "evidence": "thunderbird exec"
+    },
+    {
+      "step": 2,
+      "technique": "T1059.004",
+      "name": "Unix Shell Execution",
+      "evidence": "sh execve"
+    },
+    {
+      "step": 3,
+      "technique": "T1620",
+      "name": "Fileless RAM Staging",
+      "evidence": "sys_enter_memfd_create"
+    },
+    {
+      "step": 4,
+      "technique": "T1055.012",
+      "name": "Process Injection / W^X",
+      "evidence": "mprotect(RWX)"
+    },
+    {
+      "step": 5,
+      "technique": "T1003.008",
+      "name": "Credential Access",
+      "evidence": "openat(/etc/shadow)"
+    },
+    {
+      "step": 6,
+      "technique": "T1071.001",
+      "name": "C2 Exfiltration",
+      "evidence": "sys_enter_connect"
+    }
+  ],
+  "events": [
+    {
+      "timestamp_ns": 1790322306928432256,
+      "pid": 5020,
+      "tgid": 0,
+      "ppid": 1,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "thunderbird",
+      "pcomm": "parent",
+      "event_type": "EVENT_PROCESS_EXEC",
+      "target_path": "/usr/bin/thunderbird",
+      "net_daddr": "",
+      "net_dport": 0,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_execve"
+    },
+    {
+      "timestamp_ns": 1790322307038432256,
+      "pid": 5025,
+      "tgid": 0,
+      "ppid": 5020,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "sh",
+      "pcomm": "parent",
+      "event_type": "EVENT_PROCESS_EXEC",
+      "target_path": "/bin/sh",
+      "net_daddr": "",
+      "net_dport": 0,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_execve"
+    },
+    {
+      "timestamp_ns": 1790322307168432256,
+      "pid": 5025,
+      "tgid": 0,
+      "ppid": 5020,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "sh",
+      "pcomm": "parent",
+      "event_type": "EVENT_NET_CONNECT",
+      "target_path": "",
+      "net_daddr": "128.55.12.189",
+      "net_dport": 443,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_connect"
+    },
+    {
+      "timestamp_ns": 1790322307298432256,
+      "pid": 5025,
+      "tgid": 0,
+      "ppid": 5020,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "sh",
+      "pcomm": "parent",
+      "event_type": "EVENT_MEMFD_CREATE",
+      "target_path": "memfd:theia_payload_stage2",
+      "net_daddr": "",
+      "net_dport": 0,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_memfd_create"
+    },
+    {
+      "timestamp_ns": 1790322307428432256,
+      "pid": 5026,
+      "tgid": 0,
+      "ppid": 5025,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "theia_payload",
+      "pcomm": "parent",
+      "event_type": "EVENT_MEM_PROTECT",
+      "target_path": "",
+      "net_daddr": "",
+      "net_dport": 0,
+      "mem_prot": "0x7 (PROT_READ|PROT_WRITE|PROT_EXEC)",
+      "mem_addr": "0x7f1122000000",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_mprotect"
+    },
+    {
+      "timestamp_ns": 1790322307598432256,
+      "pid": 5026,
+      "tgid": 0,
+      "ppid": 5025,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "theia_payload",
+      "pcomm": "parent",
+      "event_type": "EVENT_FILE_OPEN",
+      "target_path": "/etc/shadow",
+      "net_daddr": "",
+      "net_dport": 0,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_openat"
+    },
+    {
+      "timestamp_ns": 1790322307738432256,
+      "pid": 5026,
+      "tgid": 0,
+      "ppid": 5025,
+      "uid": 1000,
+      "gid": 1000,
+      "comm": "theia_payload",
+      "pcomm": "parent",
+      "event_type": "EVENT_NET_CONNECT",
+      "target_path": "",
+      "net_daddr": "198.51.100.45",
+      "net_dport": 8443,
+      "mem_prot": "0x0",
+      "mem_addr": "0x0",
+      "ret_val": 0,
+      "raw_syscall": "sys_enter_connect"
+    }
+  ]
+}

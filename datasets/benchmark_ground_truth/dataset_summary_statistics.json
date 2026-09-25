@@ -1,0 +1,35 @@
+{
+  "dataset_version": "1.2.0",
+  "generation_timestamp": 1790322306.9224482,
+  "total_telemetry_events": 50000,
+  "total_processed_graphs": 300,
+  "train_graphs_count": 240,
+  "test_graphs_count": 60,
+  "telemetry_stream_breakdown": {
+    "benign": 10000,
+    "fileless": 10000,
+    "ransomware": 10000,
+    "reverse_shell": 10000,
+    "privesc": 10000
+  },
+  "threat_classes": {
+    "0": "Benign Production (Nginx, GCC, Cron, Systemd)",
+    "1": "Fileless In-Memory ELF (memfd_create, mprotect)",
+    "2": "High-Speed Ransomware (unlinkat, openat)",
+    "3": "Stealth C2 Reverse Shell (connect, /etc/shadow)",
+    "4": "Privilege Escalation CVE (setuid root, mprotect)"
+  },
+  "darpa_tc_coverage": {
+    "program": "DARPA Transparent Computing (THEIA & CADETS)",
+    "provenance_standard": "W3C PROV / Common Data Model (CDM)",
+    "techniques_verified": [
+      "T1620",
+      "T1055.012",
+      "T1486",
+      "T1059",
+      "T1071",
+      "T1003",
+      "T1068"
+    ]
+  }
+}

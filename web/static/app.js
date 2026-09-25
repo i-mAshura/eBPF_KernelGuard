@@ -352,7 +352,7 @@ function initWebSocket() {
       try {
         const payload = JSON.parse(event.data);
         if (payload.nodes && payload.edges) {
-          updateGraphData({ nodes: payload.nodes, edges: payload.edges });
+          updateGraphData({ nodes: payload.nodes, edges: payload.edges, highlighted_pid: payload.highlighted_pid });
         }
         if (payload.events) {
           updateEventTerminal(payload.events);
@@ -362,6 +362,12 @@ function initWebSocket() {
         }
         if (payload.host_sniffer_active !== undefined) {
           updateHostSnifferBadge(payload.host_sniffer_active);
+        }
+        if (payload.live_attack_alert) {
+          handleLiveAttackAlert(payload.live_attack_alert);
+        }
+        if (payload.type === "MITIGATION_EXECUTED" && payload.result) {
+          handleMitigationBroadcast(payload.result);
         }
       } catch (err) {
         console.error("WS Parse error", err);
@@ -771,6 +777,93 @@ function openBenchmarkModal() {
 
 function closeBenchmarkModal() {
   document.getElementById("benchmarkModal").style.display = "none";
+}
+
+function handleLiveAttackAlert(alert) {
+  let banner = document.getElementById("liveAttackBanner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "liveAttackBanner";
+    banner.className = "live-attack-banner";
+    const graphContainer = document.querySelector(".graph-container");
+    if (graphContainer) graphContainer.appendChild(banner);
+  }
+
+  banner.innerHTML = `
+    <div class="attack-banner-content">
+      <div class="attack-banner-pulse"></div>
+      <div class="attack-banner-text">
+        <span class="attack-banner-tag">LIVE TERMINAL ATTACK INTERCEPTED</span>
+        <strong>[PID ${alert.pid}] ${escapeHtml(alert.scenario.toUpperCase())} (${escapeHtml(alert.comm)})</strong>
+        <span class="attack-risk-tag">GNN Risk: ${((alert.risk_score || 0.95) * 100).toFixed(0)}%</span>
+      </div>
+      <div class="attack-banner-actions">
+        <button class="btn-fast-mitigate" onclick="executeMitigationForPid(${alert.pid}, '${escapeHtml(alert.threat_classification)}')">
+          ⚡ KILL MALWARE (SIGKILL)
+        </button>
+      </div>
+    </div>
+  `;
+  banner.style.display = "block";
+  banner.classList.add("flash-alert");
+  setTimeout(() => banner.classList.remove("flash-alert"), 1000);
+
+  // Focus and select node in graph
+  for (const n of nodes) {
+    if (n.properties && n.properties.pid === alert.pid) {
+      selectedNode = n;
+      showProvenanceBar(n);
+      transform.x = canvas.width / 2 - n.x * transform.k;
+      transform.y = canvas.height / 2 - n.y * transform.k;
+      break;
+    }
+  }
+
+  clearTimeout(banner._hideTimer);
+  banner._hideTimer = setTimeout(() => {
+    banner.style.display = "none";
+  }, 20000);
+}
+
+async function executeMitigationForPid(pid, threatClass) {
+  try {
+    const res = await fetch("/api/mitigate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pid: pid, threat_class: threatClass || "Malicious Process" })
+    });
+    const result = await res.json();
+    handleMitigationBroadcast(result);
+  } catch (err) {
+    console.error("Mitigation execution failed:", err);
+  }
+}
+
+function handleMitigationBroadcast(result) {
+  const banner = document.getElementById("liveAttackBanner");
+  if (banner) {
+    banner.innerHTML = `
+      <div class="attack-banner-content neutralized">
+        <div class="neutralized-icon">🛡️</div>
+        <div class="attack-banner-text">
+          <span class="neutralized-tag">IN-KERNEL DEFENSE ENFORCED</span>
+          <strong>Process PID [${result.target_pid}] Neutralized via bpf_send_signal(SIGKILL)</strong>
+          <span style="font-size: 11px; color: var(--emerald-safe);">Latency: ${result.mitigation_latency_ms} ms • Remote C2 Disconnected • Volume Protected</span>
+        </div>
+      </div>
+    `;
+    setTimeout(() => { banner.style.display = "none"; }, 6000);
+  }
+  document.getElementById("mitigationStatusBadge").textContent = `NEUTRALIZED (PID ${result.target_pid})`;
+  document.getElementById("mitigationStatusBadge").style.color = "var(--emerald-safe)";
+}
+
+function openTerminalDemoGuideModal() {
+  document.getElementById("terminalDemoModal").style.display = "flex";
+}
+
+function closeTerminalDemoGuideModal() {
+  document.getElementById("terminalDemoModal").style.display = "none";
 }
 
 function escapeHtml(str) {

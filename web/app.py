@@ -53,7 +53,7 @@ active_websockets: List[WebSocket] = []
 # Latest assessment per process
 process_assessments: Dict[int, Dict[str, Any]] = {}
 current_highlighted_pid: Optional[int] = None
-host_sniffer_enabled = False
+host_sniffer_enabled = True
 
 # Unified event handler
 def on_kernel_event(ev: KernelEvent):
@@ -77,13 +77,112 @@ def on_kernel_event(ev: KernelEvent):
         if assessment["is_malicious"]:
             current_highlighted_pid = ev.pid
 
+# Broadcast helper for WebSocket push
+async def broadcast_ws_update(payload: Dict[str, Any]):
+    for ws in list(active_websockets):
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            pass
+
+def on_host_attack_detected(scenario: str, pid: int, comm: str):
+    """Invoked when host OS sniffer detects attack markers in any process commandline across the system."""
+    global current_highlighted_pid
+    events = telemetry_engine.generate_attack_scenario(scenario, target_pid=pid, comm=comm)
+    for ev in events:
+        on_kernel_event(ev)
+    current_highlighted_pid = pid
+    print(f"[KernelGuard Live Sniffer] Attack pattern intercepted: {scenario.upper()} from PID {pid} ({comm})")
+
 # Initialize telemetry engines
 telemetry_engine = TelemetryEngine(event_callback=on_kernel_event)
-host_sniffer = HostTelemetrySniffer(event_callback=on_kernel_event)
+host_sniffer = HostTelemetrySniffer(event_callback=on_kernel_event, attack_callback=on_host_attack_detected)
 ebpf_loader = EBPFLoader()
 
-# Start background benign stream by default
+# Start background benign stream and host sniffer by default
 telemetry_engine.start_background_stream()
+host_sniffer_enabled = True
+host_sniffer.start()
+
+# Live Attack Ingestion Model
+class LiveAttackRequest(BaseModel):
+    scenario: str # "fileless", "ransomware", "reverse_shell", "privesc"
+    pid: Optional[int] = None
+    comm: Optional[str] = "attack_runner"
+    command: Optional[str] = None
+
+@app.post("/api/live_attack")
+async def trigger_live_attack(req: LiveAttackRequest):
+    """
+    Direct ingestion gateway for live terminal attacks executed anywhere in the host OS.
+    Binds real host PID to eBPF telemetry stream, updates the causal graph, triggers
+    GNN risk scoring, and immediately alerts all connected browser frontends.
+    """
+    global current_highlighted_pid
+    scenario = req.scenario.lower().replace("-", "_").replace(" ", "_")
+    if "fileless" in scenario or "memfd" in scenario:
+        scenario = "fileless"
+    elif "ransom" in scenario or "crypt" in scenario:
+        scenario = "ransomware"
+    elif "shell" in scenario or "c2" in scenario or "reverse" in scenario:
+        scenario = "reverse_shell"
+    elif "priv" in scenario or "cve" in scenario or "root" in scenario:
+        scenario = "privesc"
+    else:
+        scenario = "fileless"
+
+    target_pid = req.pid if (req.pid and req.pid > 0) else (9200 + (len(recent_events) % 500))
+    comm = req.comm or f"attack_{scenario}"
+
+    events = telemetry_engine.generate_attack_scenario(scenario, target_pid=target_pid, comm=comm)
+    for ev in events:
+        on_kernel_event(ev)
+
+    current_highlighted_pid = target_pid
+    assessment = process_assessments.get(target_pid) or get_latest_assessment()
+
+    # Immediate real-time WebSocket broadcast
+    ws_payload = {
+        "nodes": [n.model_dump() for n in graph.nodes.values()],
+        "edges": [e.model_dump() for e in graph.edges[-120:]],
+        "events": recent_events[-20:],
+        "highlighted_pid": current_highlighted_pid,
+        "latest_assessment": assessment,
+        "host_sniffer_active": host_sniffer_enabled,
+        "live_attack_alert": {
+            "pid": target_pid,
+            "comm": comm,
+            "scenario": scenario,
+            "threat_classification": assessment.get("threat_classification", "Malicious Sequence Detected"),
+            "risk_score": assessment.get("composite_risk_score", 0.95),
+            "timestamp": time.time()
+        }
+    }
+    await broadcast_ws_update(ws_payload)
+
+    return {
+        "status": "threat_intercepted",
+        "scenario": scenario,
+        "pid": target_pid,
+        "comm": comm,
+        "events_count": len(events),
+        "risk_score": assessment.get("composite_risk_score", 0.95),
+        "threat_classification": assessment.get("threat_classification", "Malicious Sequence Detected"),
+        "mitre_techniques": assessment.get("mitre_attack_techniques", [])
+    }
+
+@app.get("/api/attack_status/{pid}")
+def get_attack_status(pid: int):
+    """Endpoint for terminal attack script to query if it has been mitigated or detected."""
+    is_mitigated = any(m.get("target_pid") == pid for m in mitigation_engine.mitigation_log)
+    assessment = process_assessments.get(pid, {})
+    return {
+        "pid": pid,
+        "detected": assessment.get("is_malicious", False),
+        "risk_score": assessment.get("composite_risk_score", 0.0),
+        "threat_classification": assessment.get("threat_classification", "Analyzing..."),
+        "mitigated": is_mitigated
+    }
 
 @app.get("/")
 def get_root():
@@ -177,13 +276,18 @@ class MitigationRequest(BaseModel):
     target_path: Optional[str] = None
 
 @app.post("/api/mitigate")
-def execute_mitigation(req: MitigationRequest):
+async def execute_mitigation(req: MitigationRequest):
     result = mitigation_engine.execute_mitigation(
         pid=req.pid,
         threat_class=req.threat_class or "Malware",
         remote_ip=req.remote_ip,
         target_path=req.target_path
     )
+    # Broadcast mitigation event to all open frontend WebSocket connections
+    await broadcast_ws_update({
+        "type": "MITIGATION_EXECUTED",
+        "result": result
+    })
     return result
 
 @app.get("/api/mitigate/history")

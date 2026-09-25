@@ -196,4 +196,39 @@ int tracepoint__syscalls__sys_enter_setuid(struct trace_event_raw_sys_enter *ctx
     return 0;
 }
 
+// 7. Active Mitigation: eBPF LSM Hooks & In-Kernel Enforcement
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 1024);
+    __type(key, __u32);   // Flagged PID
+    __type(value, __u32); // Action: 1 = BLOCK_EXEC, 2 = SIGKILL
+} blocked_pids SEC(".maps");
+
+// eBPF LSM hook: Executable security check
+SEC("lsm/bprm_check_security")
+int BPF_PROG(lsm_bprm_check_security, struct linux_binprm *bprm) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    __u32 *action = bpf_map_lookup_elem(&blocked_pids, &pid);
+    if (action) {
+        if (*action == 2) {
+            bpf_send_signal(9); // Send SIGKILL immediately in-kernel
+        }
+        return -1; // -EPERM: Deny execution
+    }
+    return 0;
+}
+
+// eBPF LSM hook: In-kernel file access mitigation
+SEC("lsm/file_open")
+int BPF_PROG(lsm_file_open, struct file *file) {
+    __u32 pid = bpf_get_current_pid_tgid() >> 32;
+    __u32 *action = bpf_map_lookup_elem(&blocked_pids, &pid);
+    if (action) {
+        bpf_send_signal(9); // Abort malicious process before file write/read completes
+        return -1; // -EPERM
+    }
+    return 0;
+}
+
 char LICENSE[] SEC("license") = "GPL";
+

@@ -23,12 +23,16 @@
 
     <div class="header-telemetry-hud">
       <div class="hud-stat">
-        <span class="label">Kernel Telemetry</span>
-        <span class="val" id="hudEbpfMode">eBPF Tracepoints</span>
+        <span class="label">Telemetry Engine</span>
+        <span class="val" id="hudEbpfMode">eBPF RingBuffer</span>
+      </div>
+      <div class="hud-stat">
+        <span class="label">Host Sniffer</span>
+        <span class="val" id="hudHostSniffer">DISABLED</span>
       </div>
       <div class="hud-stat">
         <span class="label">Detection Latency</span>
-        <span class="val" id="hudLatency">1.18 ms</span>
+        <span class="val" id="hudLatency">1.26 ms</span>
       </div>
       <div class="hud-stat">
         <span class="label">Graph Entities</span>
@@ -44,7 +48,7 @@
   <!-- Interactive Control Bar -->
   <div class="control-bar">
     <div class="scenario-buttons">
-      <span class="scenario-title-label">Simulate Attack Vector:</span>
+      <span class="scenario-title-label">Simulate / Replay:</span>
       <button class="btn-scenario" id="btnFileless" onclick="runScenario('fileless')">
         <span>⚡ Fileless In-Memory ELF</span>
       </button>
@@ -57,14 +61,24 @@
       <button class="btn-scenario" id="btnPrivEsc" onclick="runScenario('privesc')">
         <span>🛡️ Privilege Escalation (UID 0)</span>
       </button>
+      <button class="btn-scenario" id="btnDarpa" onclick="runScenario('darpa_tc')">
+        <span>📂 DARPA TC THEIA Replay</span>
+      </button>
       <button class="btn-scenario" id="btnBenign" onclick="runScenario('benign')">
-        <span>🟢 Benign Background Noise</span>
+        <span>🟢 Benign Noise</span>
       </button>
     </div>
 
     <div style="display: flex; gap: 8px;">
-      <button class="btn-tool" onclick="resetGraph()">🔄 Reset State</button>
-      <button class="btn-tool" onclick="openBenchmarkModal()">📊 Benchmark Evaluation</button>
+      <button class="btn-tool" id="btnHostSnifferToggle" onclick="toggleHostSniffer()">
+        <span>🖥️ Host OS Sniffer: OFF</span>
+      </button>
+      <button class="btn-tool" id="btnSaliencyToggle" onclick="toggleSaliencyHeatmap()">
+        <span>🧠 GNN Saliency: OFF</span>
+      </button>
+      <button class="btn-tool" onclick="resetGraph()">🔄 Reset</button>
+      <button class="btn-tool" onclick="openBenchmarkModal()">📊 Benchmarks</button>
+      <button class="btn-tool" onclick="openLatexModal()">📄 Export LaTeX</button>
     </div>
   </div>
 
@@ -80,12 +94,14 @@
             <span>🌐 Temporal Behavioral Graph (Process Lineage & System Entities)</span>
           </div>
           <div style="font-size: 11px; color: var(--text-muted);">
-            Drag to pan • Click node to focus • Scroll to zoom
+            Click node to inspect • Trace Provenance • Drag & Zoom
           </div>
         </div>
 
         <div class="graph-container">
           <canvas id="graphCanvas"></canvas>
+          
+          <!-- Legend -->
           <div class="graph-legend">
             <div class="legend-item">
               <div class="legend-color" style="background: #00f0ff;"></div>
@@ -105,7 +121,19 @@
             </div>
             <div class="legend-item">
               <div class="legend-color" style="background: #ff0055;"></div>
-              <span>Flagged Threat</span>
+              <span>Threat Flagged</span>
+            </div>
+          </div>
+
+          <!-- Feature 3: Provenance Slicing Bar Overlay -->
+          <div class="graph-provenance-bar" id="graphProvenanceBar">
+            <div id="provenanceNodeDesc" style="color: var(--cyan-accent); font-weight: 600;">
+              Selected: None
+            </div>
+            <div class="provenance-controls">
+              <button class="btn-slice" onclick="triggerBackwardSlice()">⏮️ Trace Backward (Root Cause)</button>
+              <button class="btn-slice" onclick="triggerForwardSlice()">⏭️ Trace Forward (Blast Radius)</button>
+              <button class="btn-slice" style="color: #ff99bb;" onclick="clearProvenanceSlice()">Clear Slice</button>
             </div>
           </div>
         </div>
@@ -183,8 +211,8 @@
             <span>🎯 MITRE ATT&CK® Behavioral Mapping</span>
           </div>
         </div>
-        <div style="padding: 14px;">
-          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">
+        <div style="padding: 12px;">
+          <div style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 4px;">
             Identified Kernel-Level Tactics & Techniques:
           </div>
           <div class="mitre-tags" id="mitreContainer">
@@ -200,27 +228,58 @@
             <span>🧠 Explainable Threat Attribution & Root Cause</span>
           </div>
         </div>
-        <div style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="padding: 12px; display: flex; flex-direction: column; gap: 8px;">
           <div class="explain-narrative" id="explainNarrative">
             System baseline is stable. KernelGuard continuously monitors process lineage, file modifications, memory permissions, and network sockets via kernel tracepoints.
           </div>
 
-          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
+          <div style="font-size: 10.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">
             Causal Syscall Anomalies:
           </div>
           <ul class="causal-list" id="causalList">
-            <li style="color: var(--text-muted);">No anomalies detected in current temporal window.</li>
+            <li style="color: var(--text-muted);">All syscall patterns match benign operational baselines.</li>
           </ul>
 
+          <!-- Feature 2: Active Mitigation Execution Box -->
           <div class="action-box" id="actionBox">
-            <h4 id="actionBoxHeader">Analyst Recommendation</h4>
-            <div id="actionBoxContent" style="color: var(--text-main);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h4 id="actionBoxHeader">Autonomous Incident Response</h4>
+              <span id="mitigationStatusBadge" style="font-size: 10px; color: var(--emerald-safe); font-family: var(--font-mono);">ENFORCEMENT READY</span>
+            </div>
+            <div id="actionBoxContent" style="color: var(--text-main); font-size: 11px;">
               Continuous runtime behavioral monitoring active. No operator intervention required.
             </div>
+            <button class="btn-mitigate-exec" id="btnMitigateAction" onclick="executeActiveMitigation()">
+              <span>⚡ Execute Autonomous In-Kernel Mitigation (bpf_send_signal)</span>
+            </button>
           </div>
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Feature 6: Bottom Interactive Terminal Sandbox Drawer -->
+  <div class="terminal-sandbox-drawer" id="terminalDrawer">
+    <div class="drawer-header" onclick="toggleTerminalDrawer()">
+      <div class="drawer-title">
+        <span>💻 Interactive Terminal & Sandbox Simulator</span>
+        <span style="font-size: 10px; color: var(--text-muted); font-weight: normal;">(Click to expand / collapse)</span>
+      </div>
+      <div style="font-size: 10.5px; color: var(--cyan-accent); font-family: var(--font-mono);">
+        Press Enter to Execute Command
+      </div>
+    </div>
+    <div class="drawer-body">
+      <div class="terminal-output-view" id="terminalOutput">
+KernelGuard Interactive Shell Simulator [Ready]
+Type commands below to generate real kernel process executions and observe graph response.
+Try: 'whoami', 'curl -s https://example.com', or simulated shellcode triggers.
+      </div>
+      <div class="terminal-input-bar">
+        <span class="terminal-prompt">kernelguard:sandbox$&nbsp;</span>
+        <input type="text" class="terminal-input" id="terminalCmdInput" placeholder="Type a command and press Enter..." onkeydown="handleTerminalKey(event)">
+      </div>
     </div>
   </div>
 
@@ -232,7 +291,7 @@
         <button class="btn-close" onclick="closeBenchmarkModal()">✕</button>
       </div>
       <div class="modal-body">
-        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+        <p style="font-size: 11.5px; color: var(--text-muted); line-height: 1.4;">
           Evaluated against the DARPA Transparent Computing (TC) THEIA/CADETS benchmarks and in-the-wild Linux malware datasets (Mirai, LockBit Linux, Dofloo, and BPFDoor).
         </p>
 
@@ -287,9 +346,25 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
 
-        <div style="font-size: 11px; color: var(--cyan-accent); font-family: var(--font-mono); text-align: center; margin-top: 10px;">
-          Model: Relational Graph Attention Network (GAT) + Temporal Transformer Multi-Head Self-Attention
+  <!-- Feature 7: LaTeX Exporter Modal -->
+  <div class="modal-overlay" id="latexModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📄 Publication-Ready LaTeX Tables (IEEE / ACM / USENIX)</h3>
+        <button class="btn-close" onclick="closeLatexModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 11.5px; color: var(--text-muted);">
+          Copy the generated LaTeX snippets below directly into your scientific paper manuscript:
+        </p>
+        <div class="code-snippet-box" id="latexSnippetBox">Loading LaTeX tables...</div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button class="btn-tool" onclick="copyLatexSnippet()">📋 Copy to Clipboard</button>
+          <button class="btn-tool active-toggle" onclick="downloadLatexFile()">💾 Download .tex File</button>
         </div>
       </div>
     </div>

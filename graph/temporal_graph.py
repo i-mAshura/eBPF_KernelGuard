@@ -227,6 +227,88 @@ class TemporalBehavioralGraph:
 
         return {"nodes": sub_nodes, "edges": sub_edges}
 
+    def backward_slice(self, target_id: str, max_depth: int = 5) -> Dict[str, Any]:
+        """
+        Backward Provenance Slicing:
+        Traces backwards in time and causality to uncover the initial infection root-cause
+        (e.g., phished email attachment -> curl/sh -> memfd).
+        """
+        if target_id not in self.nodes:
+            # Try prepending proc:
+            target_id = f"proc:{target_id}"
+            if target_id not in self.nodes:
+                return {"slice_nodes": [], "slice_edges": [], "narrative": "Node not found"}
+
+        visited_nodes: Set[str] = {target_id}
+        slice_edges: List[Dict[str, Any]] = []
+        frontier = {target_id}
+
+        for _ in range(max_depth):
+            next_frontier = set()
+            for edge in reversed(self.edges):
+                if edge.target in frontier and edge.source not in visited_nodes:
+                    visited_nodes.add(edge.source)
+                    next_frontier.add(edge.source)
+                    slice_edges.append(edge.model_dump())
+            frontier = next_frontier
+
+        # Sort edges chronologically
+        slice_edges.sort(key=lambda x: x.get("timestamp_ns", 0))
+        slice_nodes = [self.nodes[nid].model_dump() for nid in visited_nodes if nid in self.nodes]
+
+        root_node = slice_nodes[0] if slice_nodes else None
+        root_desc = f"{root_node.get('label')} ({root_node.get('type')})" if root_node else "Unknown"
+
+        return {
+            "direction": "backward",
+            "target_id": target_id,
+            "root_cause_node": root_desc,
+            "slice_nodes": slice_nodes,
+            "slice_edges": slice_edges,
+            "narrative": f"Backward provenance slice traced {len(slice_nodes)} entities and {len(slice_edges)} causal hops back to initial ancestor: {root_desc}."
+        }
+
+    def forward_slice(self, target_id: str, max_depth: int = 5) -> Dict[str, Any]:
+        """
+        Forward Provenance Slicing (Blast Radius):
+        Traces forward in time and causality to evaluate everything compromised or altered
+        downstream by the malicious process (compromised files, sockets, child processes).
+        """
+        if target_id not in self.nodes:
+            target_id = f"proc:{target_id}"
+            if target_id not in self.nodes:
+                return {"slice_nodes": [], "slice_edges": [], "narrative": "Node not found"}
+
+        visited_nodes: Set[str] = {target_id}
+        slice_edges: List[Dict[str, Any]] = []
+        frontier = {target_id}
+
+        for _ in range(max_depth):
+            next_frontier = set()
+            for edge in self.edges:
+                if edge.source in frontier and edge.target not in visited_nodes:
+                    visited_nodes.add(edge.target)
+                    next_frontier.add(edge.target)
+                    slice_edges.append(edge.model_dump())
+            frontier = next_frontier
+
+        slice_edges.sort(key=lambda x: x.get("timestamp_ns", 0))
+        slice_nodes = [self.nodes[nid].model_dump() for nid in visited_nodes if nid in self.nodes]
+
+        affected_files = [n for n in slice_nodes if n.get("type") == "file"]
+        affected_sockets = [n for n in slice_nodes if n.get("type") == "socket"]
+
+        return {
+            "direction": "forward",
+            "target_id": target_id,
+            "blast_radius_entities": len(slice_nodes),
+            "files_impacted_count": len(affected_files),
+            "network_endpoints_contacted": len(affected_sockets),
+            "slice_nodes": slice_nodes,
+            "slice_edges": slice_edges,
+            "narrative": f"Forward blast radius slice identified {len(slice_nodes)} affected entities ({len(affected_files)} files modified/deleted, {len(affected_sockets)} network sockets contacted)."
+        }
+
     def to_dict(self) -> Dict[str, Any]:
         """Exports full active graph state for visualizer and inference."""
         return {

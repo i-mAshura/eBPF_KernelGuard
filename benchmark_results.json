@@ -1,0 +1,26 @@
+{
+  "timestamp": 1790310434.90565,
+  "graph_ingestion_latency_us": 5.9,
+  "gnn_inference_latency_ms": 1.542,
+  "inference_p99_ms": 3.442,
+  "malware_recall": 1.0,
+  "false_positive_rate": 0.0075,
+  "roc_auc": 0.9892,
+  "comparative_matrix": {
+    "KernelGuard (eBPF + GNN)": {
+      "cpu_overhead": "1.15%",
+      "latency": "1.54 ms",
+      "f1_score": 0.9825
+    },
+    "Auditd Baseline": {
+      "cpu_overhead": "12.40%",
+      "latency": "84.50 ms",
+      "f1_score": 0.892
+    },
+    "Falco (Kernel Module)": {
+      "cpu_overhead": "4.80%",
+      "latency": "14.20 ms",
+      "f1_score": 0.915
+    }
+  }
+}

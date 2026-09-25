@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C / Object artifacts
+*.o
+*.so
+*.ko
+*.mod.c
+*.mod
+.tmp_versions/
+modules.order
+Module.symvers
+
+# Environments
+venv/
+env/
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS generated
+.DS_Store
+Thumbs.db
